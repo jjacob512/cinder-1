@@ -1417,6 +1417,41 @@
 
 
 #
+# options for cinder.volume.drivers.eqlx.DellEQLSanISCSIDriver
+#
+
+#Group name to use for creating volumes (string value)
+#eqlx_group_name=group-0
+
+#Seconds to wait before sending a keepalive packet (integer value)
+#eqlx_ssh_keepalive_interval=1200
+
+#Timeout for the Group Manager cli command execution (integer value)
+#eqlx_cli_timeout=30
+
+#Maximum retry count for reconnection (integer value)
+#eqlx_cli_max_retries=5
+
+#Seconds to sleep before the next reconnection retry (integer value)
+#eqlx_cli_retries_timeout=30
+
+#Use CHAP authentificaion for targets? (boolean value)
+#eqlx_use_chap=false
+
+#Existing CHAP account name (string value)
+#eqlx_chap_login=admin
+
+#Password for specified CHAP account name (string value)
+#eqlx_chap_password=password
+
+#Print SSH debugging output to stderr (boolean value)
+#eqlx_verbose_ssh=false
+
+#Pool in which volumes will be created (string value)
+#eqlx_pool=default
+
+
+#
 # Options defined in cinder.volume.iscsi
 #
 

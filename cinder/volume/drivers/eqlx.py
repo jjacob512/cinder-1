@@ -1,6 +1,22 @@
+#    Copyright (c) 2013 Dell Inc.
+#    Copyright 2013 OpenStack LLC
+#
+#    Licensed under the Apache License, Version 2.0 (the "License"); you may
+#    not use this file except in compliance with tqhe License. You may obtain
+#    a copy of the License at
+#
+#         http://www.apache.org/licenses/LICENSE-2.0
+#
+#    Unless required by applicable law or agreed to in writing, software
+#    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#    License for the specific language governing permissions and limitations
+#    under the License.
+
+"""Volume driver for Dell EqualLogic Storage"""
+
 import sys
 import functools
-# TODO(aandreev): replace explicit imports with nova-based
 import eventlet
 import greenlet
 import time
@@ -9,7 +25,7 @@ import logging
 import paramiko
 
 from cinder import exception
-from cinder import flags
+#from cinder import flags
 from cinder.openstack.common import log as logging
 from oslo.config import cfg
 from cinder.openstack.common import jsonutils
@@ -52,8 +68,8 @@ eqlx_opts = [
 ]
 
 if __name__ != '__main__':
-    FLAGS = flags.FLAGS
-    FLAGS.register_opts(eqlx_opts)
+    CONF = cfg.CONF
+    CONF.register_opts(eqlx_opts)
 
 
 class Timeout(Exception):
@@ -147,7 +163,7 @@ class DellEQLSanISCSIDriver(SanISCSIDriver):
         super(DellEQLSanISCSIDriver, self).__init__(*args, **kwargs)
         self.configuration.append_config_values(eqlx_opts)
 
-        if FLAGS.eqlx_verbose_ssh:
+        if CONF.eqlx_verbose_ssh:
             logger = paramiko.util.logging.getLogger("paramiko")
             logger.setLevel(paramiko.util.DEBUG)
             logger.addHandler(paramiko.util.logging.StreamHandler(sys.stdout))
@@ -161,33 +177,33 @@ class DellEQLSanISCSIDriver(SanISCSIDriver):
         self.ssh_client = paramiko.SSHClient()
         #TODO(justinsb): We need a better SSH key policy
         self.ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        if FLAGS.san_password:
-            self.ssh_client.connect(FLAGS.san_ip,
-                                    port=FLAGS.san_ssh_port,
-                                    username=FLAGS.san_login,
-                                    password=FLAGS.san_password)
-        elif FLAGS.san_private_key:
-            privatekeyfile = os.path.expanduser(FLAGS.san_private_key)
+        if CONF.san_password:
+            self.ssh_client.connect(CONF.san_ip,
+                                    port=CONF.san_ssh_port,
+                                    username=CONF.san_login,
+                                    password=CONF.san_password)
+        elif CONF.san_private_key:
+            privatekeyfile = os.path.expanduser(CONF.san_private_key)
             # It sucks that paramiko doesn't support DSA keys
             privatekey = paramiko.RSAKey.from_private_key_file(privatekeyfile)
-            self.ssh_client.connect(FLAGS.san_ip,
-                                    port=FLAGS.san_ssh_port,
-                                    username=FLAGS.san_login,
+            self.ssh_client.connect(CONF.san_ip,
+                                    port=CONF.san_ssh_port,
+                                    username=CONF.san_login,
                                     pkey=privatekey)
         else:
             msg = _("Specify san_password or san_private_key")
             raise exception.InvalidInput(reason=msg)
 
         transport = self.ssh_client.get_transport()
-        transport.set_keepalive(FLAGS.eqlx_ssh_keepalive_interval)
+        transport.set_keepalive(CONF.eqlx_ssh_keepalive_interval)
         return transport
 
     def _check_connection(self):
-        for try_no in range(FLAGS.eqlx_cli_max_retries):
+        for try_no in range(CONF.eqlx_cli_max_retries):
             if hasattr(self, 'ssh'):
                 try:
                     self._run_ssh('cli-settings', 'show',
-                                  timeout=FLAGS.eqlx_cli_timeout)
+                                  timeout=CONF.eqlx_cli_timeout)
                 except Exception as error:
                     LOG.debug(error)
                     LOG.info(_("Connection to SAN has been lost"))
@@ -196,10 +212,10 @@ class DellEQLSanISCSIDriver(SanISCSIDriver):
                     LOG.debug(_("SAN connection is up"))
                     return
             if try_no:
-                time.sleep(FLAGS.eqlx_cli_retries_timeout)
+                time.sleep(CONF.eqlx_cli_retries_timeout)
             try:
                 LOG.debug(_("Connecting to the SAN (%s@%s:%d)"),
-                          FLAGS.san_login, FLAGS.san_ip, FLAGS.san_ssh_port)
+                          CONF.san_login, CONF.san_ip, CONF.san_ssh_port)
                 self.ssh = self._connect_to_ssh()
                 LOG.info(_("Connected to the SAN after %d retries"), try_no)
             except Exception as error:
@@ -221,7 +237,7 @@ class DellEQLSanISCSIDriver(SanISCSIDriver):
         try:
             self._check_connection()
             LOG.info(_('executing "%s"') % command)
-            return self._run_ssh(command, timeout=FLAGS.eqlx_cli_timeout)
+            return self._run_ssh(command, timeout=CONF.eqlx_cli_timeout)
         except Timeout:
             msg = _("Timeout while executing EQL command: %(command)s") % \
                 locals()
@@ -232,17 +248,17 @@ class DellEQLSanISCSIDriver(SanISCSIDriver):
         chan = self.ssh.open_session()
         chan.invoke_shell()
 
-        if FLAGS.eqlx_verbose_ssh:
+        if CONF.eqlx_verbose_ssh:
             LOG.debug(_("Reading CLI MOTD"))
         motd = self._get_output(chan)
 
         cmd = "%s %s %s" % ('stty', 'columns', '255')
-        if FLAGS.eqlx_verbose_ssh:
+        if CONF.eqlx_verbose_ssh:
             LOG.debug(_("Setting CLI terminal width: '%s'"), cmd)
         chan.send(cmd + '\r')
         out = self._get_output(chan)
 
-        if FLAGS.eqlx_verbose_ssh:
+        if CONF.eqlx_verbose_ssh:
             LOG.debug(_("Sending CLI command: '%s'"), command)
         chan.send(command + '\r')
         out = self._get_output(chan)
@@ -259,12 +275,12 @@ class DellEQLSanISCSIDriver(SanISCSIDriver):
 
     def _get_output(self, chan):
         out = ''
-        ending = '%s> ' % FLAGS.eqlx_group_name
+        ending = '%s> ' % CONF.eqlx_group_name
         while not out.endswith(ending):
             out += chan.recv(102400)
 
         out = out.splitlines()
-        if FLAGS.eqlx_verbose_ssh:
+        if CONF.eqlx_verbose_ssh:
             LOG.debug(_("CLI output"))
             for line in out:
                 LOG.debug("%s #", line)
@@ -283,9 +299,9 @@ class DellEQLSanISCSIDriver(SanISCSIDriver):
         lun_id = "%s:%s,1 %s 0" % (self._group_ip, '3260', target_name)
         model_update = {}
         model_update['provider_location'] = lun_id
-        if FLAGS.eqlx_use_chap:
+        if CONF.eqlx_use_chap:
             model_update['provider_auth'] = 'CHAP %s %s' % \
-                (FLAGS.eqlx_chap_login, FLAGS.eqlx_chap_password)
+                (CONF.eqlx_chap_login, CONF.eqlx_chap_password)
         return model_update
 
     def _get_space_in_gb(self, val):
@@ -318,7 +334,7 @@ class DellEQLSanISCSIDriver(SanISCSIDriver):
         data['total_capacity_gb'] = 'infinite'
         data['free_capacity_gb'] = 'infinite'
 
-        for line in self._execute('pool', 'select', FLAGS.eqlx_pool, 'show'):
+        for line in self._execute('pool', 'select', CONF.eqlx_pool, 'show'):
             if line.startswith('TotalCapacity:'):
                 _nop, _nop, val = line.rstrip().partition(' ')
                 data['total_capacity_gb'] = self._get_space_in_gb(val)
@@ -344,10 +360,10 @@ class DellEQLSanISCSIDriver(SanISCSIDriver):
     def create_volume(self, volume):
         """Create a volume"""
         cmd = ['volume', 'create', volume['name'], "%sG" % (volume['size'])]
-        if FLAGS.eqlx_pool != 'default':
+        if CONF.eqlx_pool != 'default':
             cmd.append('pool')
-            cmd.append(FLAGS.eqlx_pool)
-        if FLAGS.san_thin_provision:
+            cmd.append(CONF.eqlx_pool)
+        if CONF.san_thin_provision:
             cmd.append('thin-provision')
         out = self._execute(*cmd)
         return self._get_volume_data(out)
@@ -375,7 +391,7 @@ class DellEQLSanISCSIDriver(SanISCSIDriver):
 
     def create_cloned_volume(self, volume, src_vref):
         """Creates a clone of the specified volume."""
-        src_volume_name = FLAGS.volume_name_template % src_vref['id']
+        src_volume_name = CONF.volume_name_template % src_vref['id']
         out = self._execute('volume', 'select', src_volume_name, 'clone',
                             volume['name'])
         return self._get_volume_data(out)
@@ -389,8 +405,8 @@ class DellEQLSanISCSIDriver(SanISCSIDriver):
         """Restrict access to a volume"""
         cmd = ['volume', 'select', volume['name'], 'access', 'create',
                'initiator', connector['initiator']]
-        if FLAGS.eqlx_use_chap:
-            cmd.extend(['authmethod chap', 'username', FLAGS.eqlx_chap_login])
+        if CONF.eqlx_use_chap:
+            cmd.extend(['authmethod chap', 'username', CONF.eqlx_chap_login])
         self._execute(*cmd)
         iscsi_properties = self._get_iscsi_properties(volume)
         return {
@@ -432,23 +448,18 @@ class DellEQLSanISCSIDriver(SanISCSIDriver):
 if __name__ == "__main__":
     """The following code make it possible to execute a set of arbitrary
     commands on the SAN without starting up the nova-volume service.
-    The script requires no additional configuration beyond one already used by
-    regular nova services.
     To run the script use the following command line:
 
     python <cinder-pkg-dir>/volume/drivers/eqlx.py \
     [--config=<optional-file-with-extra-cfg>] <cmd1> ... <cmdN>
 
-    NOTE: when working with the source packaged nova use the command line
-
-    cd <nova-src-dir> && python nova/volume/san.py ...
     """
     utils.default_flagfile()
-    args = flags.FLAGS(sys.argv)
+    args = cfg.CONF(sys.argv)
     logging.setup()
 
     utils.monkey_patch()
-    volume_driver = utils.import_object(FLAGS.volume_driver)
+    volume_driver = utils.import_object(CONF.volume_driver)
 
     volume_driver.do_setup(None)
     volume_driver.check_for_setup_error()
